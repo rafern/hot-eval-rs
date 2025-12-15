@@ -1,0 +1,18 @@
+[package]
+name = "hot-eval"
+version = "0.0.1"
+description = "JIT-compiled expression evaluation for hot paths"
+authors = ["Rafael da Silva Fernandes <rafern@protonmail.com>"]
+keywords = ["eval", "expression", "jit", "llvm"]
+categories = ["parser-implementations"]
+repository = "https://github.com/rafern/hot-eval-rs"
+license = "MIT"
+edition = "2024"
+publish = false # don't publish yet, just experimenting for now
+
+[dependencies]
+inkwell = { version = "0.7.1", features = ["llvm21-1"] }
+lalrpop-util = { version = "0.22.2", features = ["lexer", "unicode"] }
+
+[build-dependencies]
+lalrpop = "0.22.2"

@@ -1,0 +1,112 @@
+use std::str::FromStr;
+use crate::{common::{value::Value, untyped_value::UntypedValue}, ast::{ast_node::{UnaryOperator, BinaryOperator, Expression}, utils::{UnevaluatedNumberLiteral, filter_str_chars, slice_after_begin, make_bad_literal_error, HotEvalParserError}}};
+
+grammar;
+
+extern {
+    type Error = HotEvalParserError;
+}
+
+// TODO bitwise operators? is it even worth it?
+
+// follows same precedence as Rust:
+// https://doc.rust-lang.org/reference/expressions.html#expression-precedence
+// ...and a bit of C for ternary:
+// https://en.cppreference.com/w/c/language/operator_precedence.html
+pub Expression: Expression = {
+    #[precedence(level="0")]
+    Term,
+    #[precedence(level="1")]
+    <name:Identifier> "(" <arguments:ExpressionList?> ")" => Expression::FunctionCall { name, arguments: arguments.unwrap_or_else(Vec::new) },
+    #[precedence(level="2")]
+    <name:Identifier> => Expression::Binding { name },
+    #[precedence(level="3")]
+    "-" <r:Expression> => Expression::UnaryOperation { operator: UnaryOperator::Negate, right: r.into() },
+    "!" <r:Expression> => Expression::UnaryOperation { operator: UnaryOperator::LogicalNot, right: r.into() },
+    #[precedence(level="4")] #[assoc(side="left")]
+    <l:Expression> "*" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::Mul, left: l.into(), right: r.into() },
+    <l:Expression> "/" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::Div, left: l.into(), right: r.into() },
+    <l:Expression> "%" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::Mod, left: l.into(), right: r.into() },
+    #[precedence(level="5")] #[assoc(side="left")]
+    <l:Expression> "+" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::Add, left: l.into(), right: r.into() },
+    <l:Expression> "-" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::Sub, left: l.into(), right: r.into() },
+    #[precedence(level="6")] #[assoc(side="none")]
+    <l:Expression> "==" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::Equals, left: l.into(), right: r.into() },
+    <l:Expression> "!=" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::NotEquals, left: l.into(), right: r.into() },
+    <l:Expression> "<=" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::LesserThanEquals, left: l.into(), right: r.into() },
+    <l:Expression> ">=" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::GreaterThanEquals, left: l.into(), right: r.into() },
+    <l:Expression> "<" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::LesserThan, left: l.into(), right: r.into() },
+    <l:Expression> ">" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::GreaterThan, left: l.into(), right: r.into() },
+    #[precedence(level="7")] #[assoc(side="left")]
+    <l:Expression> "&&" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::LogicalAnd, left: l.into(), right: r.into() },
+    #[precedence(level="8")] #[assoc(side="left")]
+    <l:Expression> "||" <r:Expression> => Expression::BinaryOperation { operator: BinaryOperator::LogicalOr, left: l.into(), right: r.into() },
+    #[precedence(level="9")] #[assoc(side="right")]
+    <c:Expression> "?" <l:Expression> ":" <r:Expression> => Expression::Ternary { cond: c.into(), left: l.into(), right: r.into() },
+};
+
+pub ExpressionList: Vec<Expression> = {
+    <e:Expression> => vec![e],
+    <mut l:ExpressionList> "," <r:Expression> => { l.push(r); l },
+}
+
+pub Term: Expression = {
+    Literal,
+    "(" <t:Expression> ")" => t,
+}
+
+pub Literal: Expression = {
+    <value:TypedValue> => Expression::TypedValue { value },
+    <value:UntypedValue> => Expression::UntypedValue { value },
+}
+
+pub TypedValue: Value = {
+    <i:IntegerLiteral> "u8" =>? Ok(Value::U8 { inner: u8::from_str_radix(&i.string, i.radix).map_err(|_| make_bad_literal_error("u8"))? }),
+    <i:IntegerLiteral> "u16" =>? Ok(Value::U16 { inner: u16::from_str_radix(&i.string, i.radix).map_err(|_| make_bad_literal_error("u16"))? }),
+    <i:IntegerLiteral> "u32" =>? Ok(Value::U32 { inner: u32::from_str_radix(&i.string, i.radix).map_err(|_| make_bad_literal_error("u32"))? }),
+    <i:IntegerLiteral> "u64" =>? Ok(Value::U64 { inner: u64::from_str_radix(&i.string, i.radix).map_err(|_| make_bad_literal_error("u64"))? }),
+    <i:IntegerLiteral> "usize" =>? Ok(Value::USize { inner: usize::from_str_radix(&i.string, i.radix).map_err(|_| make_bad_literal_error("usize"))? }),
+    <i:IntegerLiteral> "i8" =>? Ok(Value::I8 { inner: i8::from_str_radix(&i.string, i.radix).map_err(|_| make_bad_literal_error("i8"))? }),
+    <i:IntegerLiteral> "i16" =>? Ok(Value::I16 { inner: i16::from_str_radix(&i.string, i.radix).map_err(|_| make_bad_literal_error("i16"))? }),
+    <i:IntegerLiteral> "i32" =>? Ok(Value::I32 { inner: i32::from_str_radix(&i.string, i.radix).map_err(|_| make_bad_literal_error("i32"))? }),
+    <i:IntegerLiteral> "i64" =>? Ok(Value::I64 { inner: i64::from_str_radix(&i.string, i.radix).map_err(|_| make_bad_literal_error("i64"))? }),
+    <s:FloatLiteral> "f32" =>? Ok(Value::F32 { inner: f32::from_str(&s).map_err(|_| make_bad_literal_error("f32"))? }),
+    <s:DecDigits> "f32" =>? Ok(Value::F32 { inner: f32::from_str(&s).map_err(|_| make_bad_literal_error("f32"))? }),
+    <s:FloatLiteral> "f64" =>? Ok(Value::F64 { inner: f64::from_str(&s).map_err(|_| make_bad_literal_error("f64"))? }),
+    <s:DecDigits> "f64" =>? Ok(Value::F64 { inner: f64::from_str(&s).map_err(|_| make_bad_literal_error("f64"))? }),
+    "true" => Value::Bool { inner: true },
+    "false" => Value::Bool { inner: false },
+    // HACK these are always typed as f32, so that you don't have to do the type
+    //      sufixes, which are awkward to implement in the parser, and also look
+    //      weird in code. the smallest float supported is used because it will
+    //      be implicitly cast to the biggest type if needed anyway
+    "nan" => Value::F32 { inner: f32::NAN },
+    "inf" => Value::F32 { inner: f32::INFINITY },
+};
+
+pub UntypedValue: UntypedValue = {
+    <s:FloatLiteral> =>? Ok(UntypedValue::Float { inner: s.parse::<f64>().map_err(|_| make_bad_literal_error("f64"))? }),
+    <i:IntegerLiteral> =>? Ok(UntypedValue::Integer { inner: u64::from_str_radix(&i.string, i.radix).map_err(|_| make_bad_literal_error("u64"))? }),
+};
+
+pub FloatLiteral: String = {
+    // XXX it would be nice to have these next 2 as a single rule with regex,
+    //     but it causes ambiguous expressions...
+    <mut l:DecDigitsWithPeriod> "e" <r:DecDigits> => { l.push('e'); l.push_str(&r); l },
+    <mut l:DecDigitsWithPeriod> "e-" <r:DecDigits> => { l.push_str("e-"); l.push_str(&r); l },
+    DecDigitsWithPeriod,
+};
+
+pub IntegerLiteral: UnevaluatedNumberLiteral = {
+    <BinDigits> => UnevaluatedNumberLiteral { string: <>, radix: 2 },
+    <OctDigits> => UnevaluatedNumberLiteral { string: <>, radix: 8 },
+    <DecDigits> => UnevaluatedNumberLiteral { string: <>, radix: 10 },
+    <HexDigits> => UnevaluatedNumberLiteral { string: <>, radix: 16 },
+};
+
+pub DecDigitsWithPeriod: String = <mut l:DecDigits> "." <r:DecDigits> => { l.push('.'); l.push_str(&r); l };
+pub BinDigits: String = <r"0b[01](_?[01])*"> => filter_str_chars(slice_after_begin(<>, 2), '_');
+pub OctDigits: String = <r"0o[0-7](_?[0-7])*"> => filter_str_chars(slice_after_begin(<>, 2), '_');
+pub DecDigits: String = <r"[0-9](_?[0-9])*"> => filter_str_chars(<>, '_');
+pub HexDigits: String = <r"0x[0-9a-fA-F](_?[0-9a-fA-F])*"> => filter_str_chars(slice_after_begin(<>, 2), '_');
+pub Identifier: String = <r"[A-Za-z_][0-9A-Z-a-z_]*"> => <>.into();
