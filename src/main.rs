@@ -71,7 +71,7 @@ fn benchmark_aot_capturing_closure<'ctx>(closure: impl Fn(u32) -> bool) -> u32 {
 
 fn run() -> Result<(), Box<dyn Error>> {
     let mut jit_ctx = JITContext::new();
-    let mut comp_ctx = jit_ctx.make_compilation_context();
+    let mut comp_ctx = jit_ctx.make_compilation_context()?;
     let mut table = Table::new();
 
     let seed3_idx = table.add_hidden_state(ValueType::USize);

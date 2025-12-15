@@ -1,6 +1,6 @@
 [package]
 name = "hot-eval"
-version = "0.0.1"
+version = "0.0.2"
 description = "JIT-compiled expression evaluation for hot paths"
 authors = ["Rafael da Silva Fernandes <rafern@protonmail.com>"]
 keywords = ["eval", "expression", "jit", "llvm"]
@@ -16,3 +16,6 @@ lalrpop-util = { version = "0.22.2", features = ["lexer", "unicode"] }
 
 [build-dependencies]
 lalrpop = "0.22.2"
+
+[profile.release]
+lto = "thin" # this is just here to test out fixes for segfault caused by lto
