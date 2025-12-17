@@ -34,3 +34,16 @@ impl Value {
         }
     }
 }
+
+impl From<u8> for Value { fn from(inner: u8) -> Self { Self::U8 { inner } } }
+impl From<u16> for Value { fn from(inner: u16) -> Self { Self::U16 { inner } } }
+impl From<u32> for Value { fn from(inner: u32) -> Self { Self::U32 { inner } } }
+impl From<u64> for Value { fn from(inner: u64) -> Self { Self::U64 { inner } } }
+impl From<usize> for Value { fn from(inner: usize) -> Self { Self::USize { inner } } }
+impl From<i8> for Value { fn from(inner: i8) -> Self { Self::I8 { inner } } }
+impl From<i16> for Value { fn from(inner: i16) -> Self { Self::I16 { inner } } }
+impl From<i32> for Value { fn from(inner: i32) -> Self { Self::I32 { inner } } }
+impl From<i64> for Value { fn from(inner: i64) -> Self { Self::I64 { inner } } }
+impl From<f32> for Value { fn from(inner: f32) -> Self { Self::F32 { inner } } }
+impl From<f64> for Value { fn from(inner: f64) -> Self { Self::F64 { inner } } }
+impl From<bool> for Value { fn from(inner: bool) -> Self { Self::Bool { inner } } }

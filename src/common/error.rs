@@ -8,6 +8,7 @@ pub enum CommonError {
     CannotResolve { from: UntypedValue, to: ValueType },
     CannotMakeSigned { from: ValueType },
     BindingAlreadyExists { name: String },
+    BindingFuncParamBadType { expected: ValueType, got: ValueType },
 }
 
 impl fmt::Display for CommonError {
@@ -17,6 +18,7 @@ impl fmt::Display for CommonError {
             Self::CannotResolve { from, to } => write!(f, "Cannot resolve untyped value ({from:?}) to {to:?}"),
             Self::CannotMakeSigned { from } => write!(f, "Cannot convert {from:?} to another signed type"),
             Self::BindingAlreadyExists { name } => write!(f, "Binding \"{name}\" already exists"),
+            Self::BindingFuncParamBadType { expected, got } => write!(f, "Expected binding function parameter with type {expected:?}, got {got:?}"),
         }
     }
 }
