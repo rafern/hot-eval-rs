@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, mem::MaybeUninit};
 
 use crate::common::binding::Binding;
 
@@ -10,7 +10,7 @@ pub enum SlabBindingInfo {
 }
 
 pub struct Slab {
-    data: Vec<usize>,
+    data: Vec<MaybeUninit<usize>>,
     hidden_state_count: usize,
     binding_map: HashMap<String, SlabBindingInfo>,
 }
@@ -34,12 +34,8 @@ impl Slab {
             }
         }
 
-        let mut data = Vec::<usize>::with_capacity(idx);
-        // XXX: the data in the vector could literally be anything, so we might
-        //      as well just set the length and leave it uninitialized. it's the
-        //      user's responsibility to set each value before evaluating the
-        //      expression using this slab
-        unsafe { data.set_len(idx); }
+        let mut data = Vec::with_capacity(idx);
+        data.resize(idx, MaybeUninit::new(0));
 
         Ok(Slab { data, hidden_state_count, binding_map })
     }
@@ -58,26 +54,66 @@ impl Slab {
         }
     }
 
-    pub fn get_hidden_state_count(&self) -> usize {
+    pub const fn get_hidden_state_count(&self) -> usize {
         self.hidden_state_count
     }
 
     pub fn get_address(&self, idx: usize) -> usize {
-        unsafe { self.data.as_ptr().offset(idx.try_into().unwrap()).addr() }
+        (&self.data[idx] as *const MaybeUninit<usize>).addr()
     }
 
     #[inline(always)]
-    pub fn set_value<T>(&mut self, idx: usize, value: T) {
-        debug_assert!(idx < self.data.len());
-        unsafe { *(self.data.as_mut_ptr().offset(idx as isize) as *mut T) = value }
+    const unsafe fn get_value_ptr_unchecked<T: Copy>(&mut self, idx: usize) -> *mut T {
+        const { assert!(size_of::<T>() <= size_of::<usize>()); }
+        // SAFETY: idx must be guaranteed to be < self.data.len() by the caller,
+        //         so there is no OOB access, and T fits in a usize, so the
+        //         pointer can be safely cast to *mut T
+        unsafe { self.data.as_mut_ptr().offset(idx as isize) as *mut T }
     }
 
     #[inline(always)]
-    pub fn set_ptr_value<T>(&mut self, idx: usize, value: *const T) {
-        self.data[idx] = value.addr();
+    pub const unsafe fn set_value_unchecked<T: Copy>(&mut self, idx: usize, value: T) {
+        // SAFETY: idx must be guaranteed to be < self.data.len() by the caller
+        unsafe { *self.get_value_ptr_unchecked(idx) = value };
     }
 
-    pub fn get_value<T: Copy>(&self, idx: usize) -> T {
+    #[inline(always)]
+    pub const fn set_value<T: Copy>(&mut self, idx: usize, value: T) {
+        assert!(idx < self.data.len());
+        // SAFETY: idx < self.data.len(), so there is no OOB access
+        unsafe { self.set_value_unchecked(idx, value) };
+    }
+
+    /// SAFETY: The caller must guarantee that the pointer is valid when the
+    ///         expression using this Slab is evaluated
+    #[inline(always)]
+    pub unsafe fn set_ptr_value_unchecked<T>(&mut self, idx: usize, pointer: *const T) {
+        // SAFETY: idx must be guaranteed to be < self.data.len() by the caller
+        unsafe { self.set_value_unchecked(idx, pointer.addr()) };
+    }
+
+    /// SAFETY: The caller must guarantee that the pointer is valid when the
+    ///         expression using this Slab is evaluated
+    ///
+    /// This method is unsafe since it only checks that idx is valid
+    #[inline(always)]
+    pub unsafe fn set_ptr_value<T>(&mut self, idx: usize, pointer: *const T) {
+        self.set_value(idx, pointer.addr());
+    }
+
+    #[inline(always)]
+    pub const unsafe fn get_value_unchecked<T: Copy>(&self, idx: usize) -> T {
+        const { assert!(size_of::<T>() <= size_of::<usize>()); }
+        // SAFETY: idx must be guaranteed to be < self.data.len() by the caller,
+        //         so there is no OOB access, and T fits in a usize, so the
+        //         pointer can be safely cast to *mut T
         unsafe { *(self.data.as_ptr().offset(idx as isize) as *const T) }
+    }
+
+    #[inline(always)]
+    pub const fn get_value<T: Copy>(&self, idx: usize) -> T {
+        assert!(idx < self.data.len());
+        // SAFETY: idx < self.data.len(), so there is no OOB access
+        unsafe { self.get_value_unchecked(idx) }
     }
 }

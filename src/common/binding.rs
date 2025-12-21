@@ -80,3 +80,5 @@ impl ToBFPValueType for f64 { fn to_bfp_value_type() -> ValueType { ValueType::F
 impl ToBFPValueType for bool { fn to_bfp_value_type() -> ValueType { ValueType::Bool } }
 impl<T> ToBFPValueType for *const T { fn to_bfp_value_type() -> ValueType { ValueType::USize } }
 impl<T> ToBFPValueType for *mut T { fn to_bfp_value_type() -> ValueType { ValueType::USize } }
+impl<T> ToBFPValueType for &T { fn to_bfp_value_type() -> ValueType { ValueType::USize } }
+impl<T> ToBFPValueType for &mut T { fn to_bfp_value_type() -> ValueType { ValueType::USize } }

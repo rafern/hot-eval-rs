@@ -5,8 +5,8 @@ use hot_eval::{codegen::{compiled_expression::{CompiledExpression, HotEvalJitFun
 const ITERS: u32 = 100_000_000;
 
 #[inline(never)]
-fn get_wanted_x(seed1: u32, seed2: u32, seed3: *const u32) -> u32 {
-    (seed1 * 123 - 45) / seed2 + unsafe { *seed3 }
+fn get_wanted_x(seed1: u32, seed2: u32, seed3: &u32) -> u32 {
+    (seed1 * 123 - 45) / seed2 + *seed3
 }
 
 #[inline(never)]
@@ -15,7 +15,7 @@ fn benchmark_jit<'ctx>(slab: &'ctx mut Slab, jit_fn: HotEvalJitFunction<'ctx, bo
 
     for x in 0..ITERS {
         slab.set_value(test_value_idx, x);
-        slab.set_ptr_value(seed3_idx, &42);
+        unsafe { slab.set_ptr_value(seed3_idx, &42); }
         if unsafe { jit_fn.call() } {
             matches += 1;
         }
