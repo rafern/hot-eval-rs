@@ -6,7 +6,7 @@ pub struct BindingFunctionSpecializationHints {
     pub consts: Box<[Option<IRConst>]>,
 }
 
-pub type BindingFunctionSpecialization = Box<dyn Fn(BindingFunctionSpecializationHints) -> *const c_void>;
+pub type BindingFunctionSpecialization<'table> = Box<dyn Fn(BindingFunctionSpecializationHints) -> *const c_void + 'table>;
 
 pub enum BindingFunctionParameter {
     Parameter { value_type: ValueType },
@@ -14,10 +14,10 @@ pub enum BindingFunctionParameter {
     HiddenStateArgument { hidden_state_idx: usize, cast_to_type: Option<ValueType> },
 }
 
-pub enum Binding {
+pub enum Binding<'table> {
     Const { value: Value },
     Variable { value_type: ValueType },
-    Function { ret_type: ValueType, params: Box<[BindingFunctionParameter]>, fn_spec: BindingFunctionSpecialization },
+    Function { ret_type: ValueType, params: Box<[BindingFunctionParameter]>, fn_spec: BindingFunctionSpecialization<'table> },
 }
 
 impl BindingFunctionParameter {

@@ -12,7 +12,7 @@ pub enum FunctionArgument {
 pub enum PackedAnalysisNodeData<'table> {
     TypedValue { value: Value },
     UntypedValue { value: UntypedValue },
-    FunctionCall { args: Vec<FunctionArgument>, fn_spec: &'table BindingFunctionSpecialization },
+    FunctionCall { args: Vec<FunctionArgument>, fn_spec: &'table BindingFunctionSpecialization<'table> },
     UnaryOperation { operator: UnaryOperator, right_idx: usize },
     BinaryOperation { operator: BinaryOperator, left_idx: usize, right_idx: usize },
     Variable { name: String },

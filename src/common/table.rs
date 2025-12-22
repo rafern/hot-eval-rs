@@ -4,17 +4,17 @@ use crate::common::binding::BindingFunctionParameter;
 
 use super::{binding::{Binding, ToBFPValueType}, error::CommonError, value::Value, value_type::ValueType};
 
-pub struct Table {
-    bindings: HashMap<String, Binding>,
+pub struct Table<'table> {
+    bindings: HashMap<String, Binding<'table>>,
     hidden_states: Vec<ValueType>,
 }
 
-impl Table {
+impl<'table> Table<'table> {
     pub fn new() -> Self {
         Table { bindings: HashMap::new(), hidden_states: Vec::new() }
     }
 
-    pub unsafe fn add_binding(&mut self, name: String, binding: Binding) -> Result<(), CommonError> {
+    pub unsafe fn add_binding(&mut self, name: String, binding: Binding<'table>) -> Result<(), CommonError> {
         if self.bindings.contains_key(&name) {
             Err(CommonError::BindingAlreadyExists { name })
         } else {
@@ -23,11 +23,11 @@ impl Table {
         }
     }
 
-    pub fn get_binding<'table>(&'table self, name: &String) -> Option<&'table Binding> {
+    pub fn get_binding(&self, name: &String) -> Option<&'_ Binding<'_>> {
         self.bindings.get(name)
     }
 
-    pub fn iter_bindings(&self) -> Iter<'_, String, Binding> {
+    pub fn iter_bindings(&self) -> Iter<'_, String, Binding<'_>> {
         self.bindings.iter()
     }
 
@@ -40,7 +40,7 @@ impl Table {
         self.add_hidden_state(ValueType::USize)
     }
 
-    pub fn get_hidden_state<'table>(&'table self, hidden_state_idx: usize) -> Option<&'table ValueType> {
+    pub fn get_hidden_state(&'table self, hidden_state_idx: usize) -> Option<&'table ValueType> {
         self.hidden_states.get(hidden_state_idx)
     }
 
@@ -101,7 +101,7 @@ impl Table {
         }) }
     }
 
-    pub fn add_function_1_map<'table, R, P1, M1>(&'table mut self, name: String, fn_ptr: fn(P1) -> R, p1: M1) -> Result<(), CommonError>
+    pub fn add_function_1_map<R, P1, M1>(&mut self, name: String, fn_ptr: fn(P1) -> R, p1: M1) -> Result<(), CommonError>
     where
         R: ToBFPValueType,
         P1: ToBFPValueType,
@@ -149,7 +149,7 @@ impl Table {
                 p1.into().guard::<P1>()?,
                 p2.into().guard::<P2>()?,
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr })
+            fn_spec: Box::new(move |_| { fn_ptr }),
         }) }
     }
 
@@ -190,7 +190,7 @@ impl Table {
                 p2.into().guard::<P2>()?,
                 p3.into().guard::<P3>()?,
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr })
+            fn_spec: Box::new(move |_| { fn_ptr }),
         }) }
     }
 
@@ -236,7 +236,7 @@ impl Table {
                 p3.into().guard::<P3>()?,
                 p4.into().guard::<P4>()?,
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr })
+            fn_spec: Box::new(move |_| { fn_ptr }),
         }) }
     }
 
@@ -287,7 +287,7 @@ impl Table {
                 p4.into().guard::<P4>()?,
                 p5.into().guard::<P5>()?,
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr })
+            fn_spec: Box::new(move |_| { fn_ptr }),
         }) }
     }
 }
