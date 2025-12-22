@@ -2,7 +2,7 @@ use std::error::Error;
 
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate, builder::BuilderError, values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, IntValue, ValueKind}};
 
-use crate::{analysis::{error::AnalysisError, packed_analysis_node::{FunctionArgument, PackedAnalysisNodeData}, packed_analysis_tree::PackedAnalysisTree}, ast::ast_node::{BinaryOperator, UnaryOperator}, codegen::utils::get_fn_llvm_type, common::{slab::SlabBindingInfo, value::Value, value_type::ValueType}};
+use crate::{analysis::{error::AnalysisError, packed_analysis_node::{FunctionArgument, PackedAnalysisNodeData}, packed_analysis_tree::PackedAnalysisTree}, ast::ast_node::{BinaryOperator, UnaryOperator}, codegen::utils::get_fn_llvm_type, common::{binding::BindingFunctionSpecializationHints, ir_const::IRConst, slab::SlabBindingInfo, value::Value, value_type::ValueType}};
 
 use super::{codegen_context::CodegenContext, error::CodegenError, ir_value_type::IRValueType, utils::get_usize_llvm_type};
 
@@ -194,9 +194,10 @@ impl<'ctx> IRValue<'ctx> {
         Ok(match &aast.nodes[idx].data {
             PackedAnalysisNodeData::TypedValue { value } => Self::from_ast_typed_value(value, context),
             PackedAnalysisNodeData::UntypedValue { .. } => return Err(Box::new(AnalysisError::BadAnalysis)),
-            PackedAnalysisNodeData::FunctionCall { args, fn_ptr } => {
+            PackedAnalysisNodeData::FunctionCall { args, fn_spec } => {
                 let mut arg_types = Vec::<ValueType>::new();
                 let mut llvm_args = Vec::<BasicMetadataValueEnum<'ctx>>::new();
+                let mut spec_hint_consts = Vec::<Option<IRConst>>::new();
 
                 for arg in args {
                     match arg {
@@ -204,7 +205,9 @@ impl<'ctx> IRValue<'ctx> {
                             let arg_idx = *arg_idx;
                             let arg_type = *arg_type;
                             arg_types.push(arg_type);
-                            llvm_args.push(Self::from_aast_node(aast, arg_idx, context)?.cast_if_needed(aast.get_node_type(arg_idx)?, arg_type, context)?.to_meta_value());
+                            let llvm_val = Self::from_aast_node(aast, arg_idx, context)?.cast_if_needed(aast.get_node_type(arg_idx)?, arg_type, context)?;
+                            spec_hint_consts.push(llvm_val.get_ir_const());
+                            llvm_args.push(llvm_val.to_meta_value());
                         },
                         FunctionArgument::ConstArgument { value } => {
                             arg_types.push(value.get_value_type());
@@ -229,6 +232,7 @@ impl<'ctx> IRValue<'ctx> {
                     }
                 }
 
+                let fn_ptr = fn_spec(BindingFunctionSpecializationHints { consts: spec_hint_consts.into() });
                 let fn_type = get_fn_llvm_type(context.llvm_context, resolved_type, arg_types);
                 let ptr_type = context.llvm_context.ptr_type(AddressSpace::default());
                 let ptr_val = get_usize_llvm_type(context.llvm_context).const_int(fn_ptr.addr() as u64, false).const_to_pointer(ptr_type);
@@ -424,6 +428,75 @@ impl<'ctx> IRValue<'ctx> {
             _ => Err(Box::new(CodegenError::UnexpectedBasicValueEnum)),
         }
     }
+
+    fn get_ir_const(&self) -> Option<IRConst> {
+        match *self {
+            IRValue::Int { inner, is_signed } => {
+                if is_signed {
+                    match inner.get_sign_extended_constant() {
+                        Some(inner) => Some(IRConst::Int { inner }),
+                        None => None,
+                    }
+                } else {
+                    match inner.get_zero_extended_constant() {
+                        Some(inner) => Some(IRConst::Uint { inner }),
+                        None => None,
+                    }
+                }
+            },
+            IRValue::Float { inner } => {
+                match inner.get_constant() {
+                    Some((inner, _)) => Some(IRConst::Float { inner }),
+                    None => None,
+                }
+            },
+        }
+    }
+
+    /*fn get_const_value(&self, value_type: &ValueType) -> Result<Option<Value>, CodegenError> {
+        let ir_const = match self.get_ir_const() {
+            Some(x) => x,
+            None => return Ok(None),
+        };
+
+        Ok(Some(match ir_const {
+            IRConst::Int { inner } => {
+                match value_type {
+                    ValueType::I8 => Value::I8 { inner: inner.try_into().map_err(|_| CodegenError::UnexpectedBaseType)? },
+                    ValueType::I16 => Value::I16 { inner: inner.try_into().map_err(|_| CodegenError::UnexpectedBaseType)? },
+                    ValueType::I32 => Value::I32 { inner: inner.try_into().map_err(|_| CodegenError::UnexpectedBaseType)? },
+                    ValueType::I64 => Value::I64 { inner },
+                    _ => return Err(CodegenError::UnexpectedBaseType),
+                }
+            },
+            IRConst::Uint { inner } => {
+                match value_type {
+                    ValueType::U8 => Value::U8 { inner: inner.try_into().map_err(|_| CodegenError::UnexpectedBaseType)? },
+                    ValueType::U16 => Value::U16 { inner: inner.try_into().map_err(|_| CodegenError::UnexpectedBaseType)? },
+                    ValueType::U32 => Value::U32 { inner: inner.try_into().map_err(|_| CodegenError::UnexpectedBaseType)? },
+                    ValueType::U64 => Value::U64 { inner },
+                    ValueType::USize => Value::USize { inner: inner.try_into().map_err(|_| CodegenError::UnexpectedBaseType)? },
+                    ValueType::Bool => {
+                        if inner == 1 {
+                            Value::Bool { inner: true }
+                        } else if inner == 0 {
+                            Value::Bool { inner: false }
+                        } else {
+                            return Err(CodegenError::UnexpectedBaseType);
+                        }
+                    },
+                    _ => return Err(CodegenError::UnexpectedBaseType),
+                }
+            },
+            IRConst::Float { inner } => {
+                match value_type {
+                    ValueType::F32 => Value::F32 { inner: inner as f32 },
+                    ValueType::F64 => Value::F64 { inner },
+                    _ => return Err(CodegenError::UnexpectedBaseType),
+                }
+            },
+        }))
+    }*/
 }
 
 impl<'ctx> TryFrom<IRValue<'ctx>> for IntValue<'ctx> {

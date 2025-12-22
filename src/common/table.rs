@@ -1,4 +1,4 @@
-use std::collections::{HashMap, hash_map::Iter};
+use std::{collections::{HashMap, hash_map::Iter}, ffi::c_void};
 
 use crate::common::binding::BindingFunctionParameter;
 
@@ -78,10 +78,11 @@ impl Table {
     where
         R: ToBFPValueType,
     {
+        let fn_ptr = fn_ptr as *const c_void;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: vec![],
-            fn_ptr: fn_ptr as *const ()
+            params: Box::new([]),
+            fn_spec: Box::new(move |_| { fn_ptr }),
         }) }
     }
 
@@ -90,27 +91,29 @@ impl Table {
         R: ToBFPValueType,
         P1: ToBFPValueType,
     {
+        let fn_ptr = fn_ptr as *const c_void;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: vec![
+            params: [
                 P1::to_bfp_value_type().into(),
-            ],
-            fn_ptr: fn_ptr as *const ()
+            ].into(),
+            fn_spec: Box::new(move |_| { fn_ptr }),
         }) }
     }
 
-    pub fn add_function_1_map<R, P1, M1>(&mut self, name: String, fn_ptr: fn(P1) -> R, p1: M1) -> Result<(), CommonError>
+    pub fn add_function_1_map<'table, R, P1, M1>(&'table mut self, name: String, fn_ptr: fn(P1) -> R, p1: M1) -> Result<(), CommonError>
     where
         R: ToBFPValueType,
         P1: ToBFPValueType,
         M1: Into<BindingFunctionParameter>,
     {
+        let fn_ptr = fn_ptr as *const c_void;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: vec![
+            params: [
                 p1.into().guard::<P1>()?,
-            ],
-            fn_ptr: fn_ptr as *const ()
+            ].into(),
+            fn_spec: Box::new(move |_| { fn_ptr }),
         }) }
     }
 
@@ -120,13 +123,14 @@ impl Table {
         P1: ToBFPValueType,
         P2: ToBFPValueType,
     {
+        let fn_ptr = fn_ptr as *const c_void;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: vec![
+            params: [
                 P1::to_bfp_value_type().into(),
                 P2::to_bfp_value_type().into(),
-            ],
-            fn_ptr: fn_ptr as *const ()
+            ].into(),
+            fn_spec: Box::new(move |_| { fn_ptr }),
         }) }
     }
 
@@ -138,13 +142,14 @@ impl Table {
         P2: ToBFPValueType,
         M2: Into<BindingFunctionParameter>,
     {
+        let fn_ptr = fn_ptr as *const c_void;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: vec![
+            params: [
                 p1.into().guard::<P1>()?,
                 p2.into().guard::<P2>()?,
-            ],
-            fn_ptr: fn_ptr as *const ()
+            ].into(),
+            fn_spec: Box::new(move |_| { fn_ptr })
         }) }
     }
 
@@ -155,14 +160,15 @@ impl Table {
         P2: ToBFPValueType,
         P3: ToBFPValueType,
     {
+        let fn_ptr = fn_ptr as *const c_void;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: vec![
+            params: [
                 P1::to_bfp_value_type().into(),
                 P2::to_bfp_value_type().into(),
                 P3::to_bfp_value_type().into(),
-            ],
-            fn_ptr: fn_ptr as *const ()
+            ].into(),
+            fn_spec: Box::new(move |_| { fn_ptr }),
         }) }
     }
 
@@ -176,14 +182,15 @@ impl Table {
         P3: ToBFPValueType,
         M3: Into<BindingFunctionParameter>,
     {
+        let fn_ptr = fn_ptr as *const c_void;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: vec![
+            params: [
                 p1.into().guard::<P1>()?,
                 p2.into().guard::<P2>()?,
                 p3.into().guard::<P3>()?,
-            ],
-            fn_ptr: fn_ptr as *const ()
+            ].into(),
+            fn_spec: Box::new(move |_| { fn_ptr })
         }) }
     }
 
@@ -195,15 +202,16 @@ impl Table {
         P3: ToBFPValueType,
         P4: ToBFPValueType,
     {
+        let fn_ptr = fn_ptr as *const c_void;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: vec![
+            params: [
                 P1::to_bfp_value_type().into(),
                 P2::to_bfp_value_type().into(),
                 P3::to_bfp_value_type().into(),
                 P4::to_bfp_value_type().into(),
-            ],
-            fn_ptr: fn_ptr as *const ()
+            ].into(),
+            fn_spec: Box::new(move |_| { fn_ptr }),
         }) }
     }
 
@@ -219,15 +227,16 @@ impl Table {
         P4: ToBFPValueType,
         M4: Into<BindingFunctionParameter>,
     {
+        let fn_ptr = fn_ptr as *const c_void;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: vec![
+            params: [
                 p1.into().guard::<P1>()?,
                 p2.into().guard::<P2>()?,
                 p3.into().guard::<P3>()?,
                 p4.into().guard::<P4>()?,
-            ],
-            fn_ptr: fn_ptr as *const ()
+            ].into(),
+            fn_spec: Box::new(move |_| { fn_ptr })
         }) }
     }
 
@@ -240,16 +249,17 @@ impl Table {
         P4: ToBFPValueType,
         P5: ToBFPValueType,
     {
+        let fn_ptr = fn_ptr as *const c_void;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: vec![
+            params: [
                 P1::to_bfp_value_type().into(),
                 P2::to_bfp_value_type().into(),
                 P3::to_bfp_value_type().into(),
                 P4::to_bfp_value_type().into(),
                 P5::to_bfp_value_type().into(),
-            ],
-            fn_ptr: fn_ptr as *const ()
+            ].into(),
+            fn_spec: Box::new(move |_| { fn_ptr }),
         }) }
     }
 
@@ -267,16 +277,17 @@ impl Table {
         P5: ToBFPValueType,
         M5: Into<BindingFunctionParameter>,
     {
+        let fn_ptr = fn_ptr as *const c_void;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: vec![
+            params: [
                 p1.into().guard::<P1>()?,
                 p2.into().guard::<P2>()?,
                 p3.into().guard::<P3>()?,
                 p4.into().guard::<P4>()?,
                 p5.into().guard::<P5>()?,
-            ],
-            fn_ptr: fn_ptr as *const ()
+            ].into(),
+            fn_spec: Box::new(move |_| { fn_ptr })
         }) }
     }
 }

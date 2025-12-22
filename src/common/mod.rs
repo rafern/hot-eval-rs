@@ -5,3 +5,4 @@ pub mod untyped_value;
 pub mod table;
 pub mod binding;
 pub mod slab;
+pub mod ir_const;

@@ -1,4 +1,12 @@
-use super::{error::CommonError, value::Value, value_type::ValueType};
+use std::ffi::c_void;
+
+use super::{error::CommonError, ir_const::IRConst, value::Value, value_type::ValueType};
+
+pub struct BindingFunctionSpecializationHints {
+    pub consts: Box<[Option<IRConst>]>,
+}
+
+pub type BindingFunctionSpecialization = Box<dyn Fn(BindingFunctionSpecializationHints) -> *const c_void>;
 
 pub enum BindingFunctionParameter {
     Parameter { value_type: ValueType },
@@ -9,7 +17,7 @@ pub enum BindingFunctionParameter {
 pub enum Binding {
     Const { value: Value },
     Variable { value_type: ValueType },
-    Function { ret_type: ValueType, params: Vec<BindingFunctionParameter>, fn_ptr: *const () },
+    Function { ret_type: ValueType, params: Box<[BindingFunctionParameter]>, fn_spec: BindingFunctionSpecialization },
 }
 
 impl BindingFunctionParameter {

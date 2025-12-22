@@ -4,12 +4,12 @@ use crate::{analysis::packed_analysis_node::{FunctionArgument, PackedAnalysisNod
 
 use super::{error::AnalysisError, packed_analysis_node::PackedAnalysisNode};
 
-pub struct PackedAnalysisTree {
-    pub nodes: Vec<PackedAnalysisNode>,
+pub struct PackedAnalysisTree<'table> {
+    pub nodes: Vec<PackedAnalysisNode<'table>>,
 }
 
-impl PackedAnalysisTree {
-    fn ast_to_analysis_node(&mut self, ast_node: &Expression, table: &Table) -> Result<usize, AnalysisError> {
+impl<'table> PackedAnalysisTree<'table> {
+    fn ast_to_analysis_node(&mut self, ast_node: &Expression, table: &'table Table) -> Result<usize, AnalysisError> {
         let (node, this_idx) = match ast_node {
             Expression::TypedValue { value } => {
                 (PackedAnalysisNode {
@@ -28,12 +28,12 @@ impl PackedAnalysisTree {
             Expression::FunctionCall { name, arguments } => {
                 let binding = table.get_binding(name).ok_or_else(|| { AnalysisError::UnknownBinding { name: name.clone() } })?;
                 let actual_argc = arguments.len();
-                let (ret_type, params, fn_ptr) = match binding {
+                let (ret_type, params, fn_spec) = match binding {
                     Binding::Const { .. } |
                     Binding::Variable { .. } => {
                         return Err(AnalysisError::BadBindingKind { name: name.clone(), is_var: true })
                     },
-                    Binding::Function { ret_type, params, fn_ptr } => {
+                    Binding::Function { ret_type, params, fn_spec } => {
                         let mut expected_argc = 0;
                         for param in params {
                             if let BindingFunctionParameter::Parameter { .. } = param {
@@ -45,7 +45,7 @@ impl PackedAnalysisTree {
                             return Err(AnalysisError::BadArguments { name: name.clone(), expected_argc, actual_argc })
                         }
 
-                        (ret_type, params, *fn_ptr)
+                        (ret_type, params, fn_spec)
                     },
                 };
 
@@ -85,7 +85,7 @@ impl PackedAnalysisTree {
 
                 (PackedAnalysisNode {
                     resolved_type: Some(*ret_type),
-                    data: PackedAnalysisNodeData::FunctionCall { args: aast_args, fn_ptr },
+                    data: PackedAnalysisNodeData::FunctionCall { args: aast_args, fn_spec },
                     parent_idx: None,
                 }, this_idx)
             },
@@ -172,7 +172,7 @@ impl PackedAnalysisTree {
         Ok(this_idx)
     }
 
-    pub fn from_ast(ast_root_node: &Expression, table: &Table) -> Result<PackedAnalysisTree, Box<dyn Error>> {
+    pub fn from_ast(ast_root_node: &Expression, table: &'table Table) -> Result<PackedAnalysisTree<'table>, Box<dyn Error>> {
         let mut tree = PackedAnalysisTree { nodes: Vec::new() };
         tree.ast_to_analysis_node(ast_root_node, table)?;
         tree.semantic_analysis()?;
@@ -244,7 +244,7 @@ impl PackedAnalysisTree {
             PackedAnalysisNodeData::TypedValue { .. } |
             PackedAnalysisNodeData::UntypedValue { .. } |
             PackedAnalysisNodeData::Variable { .. } => return Err(Box::new(AnalysisError::BadAnalysis)),
-            PackedAnalysisNodeData::FunctionCall { args, fn_ptr: _  } => 'slfc_match: {
+            PackedAnalysisNodeData::FunctionCall { args, fn_spec: _  } => 'slfc_match: {
                 for arg in args {
                     if let FunctionArgument::Parameter { idx, expected_type } = arg && child_idx == *idx {
                         break 'slfc_match Some(*expected_type);
@@ -478,7 +478,7 @@ impl PackedAnalysisTree {
             PackedAnalysisNodeData::TypedValue { .. } |
             PackedAnalysisNodeData::UntypedValue { .. } |
             PackedAnalysisNodeData::Variable { .. } => { },
-            PackedAnalysisNodeData::FunctionCall { args, fn_ptr: _ } => {
+            PackedAnalysisNodeData::FunctionCall { args, fn_spec: _ } => {
                 for arg in args {
                     if let FunctionArgument::Parameter { idx, expected_type: _ } = arg {
                         self.print_node_to_stderr(*idx, depth + 1);

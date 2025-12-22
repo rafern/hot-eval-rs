@@ -1,6 +1,6 @@
 [package]
 name = "hot-eval"
-version = "0.0.4"
+version = "0.0.5"
 description = "JIT-compiled expression evaluation for hot paths"
 authors = ["Rafael da Silva Fernandes <rafern@protonmail.com>"]
 keywords = ["eval", "expression", "jit", "llvm"]
