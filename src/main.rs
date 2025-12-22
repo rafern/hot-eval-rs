@@ -1,6 +1,6 @@
 use std::{error::Error, hint::black_box, time::Instant};
 
-use hot_eval::{codegen::{compiled_expression::{CompiledExpression, HotEvalJitFunction}, jit_context::JITContext}, common::{binding::BindingFunctionParameter, slab::Slab, table::Table, value_type::ValueType}};
+use hot_eval::{codegen::{compiled_expression::{CompiledExpression, HotEvalJitFunction}, jit_context::JITContext}, common::{binding::FnSpecCallArg, slab::Slab, table::Table, value_type::ValueType}};
 
 const ITERS: u32 = 100_000_000;
 
@@ -77,7 +77,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     let seed3_idx = table.add_ptr_hidden_state();
 
     table.add_variable("x".into(), ValueType::U32)?;
-    table.add_function_3_map("get_wanted_x".into(), get_wanted_x, 3u32, ValueType::U32, BindingFunctionParameter::from_hidden_state(seed3_idx))?;
+    table.add_function_3_map("get_wanted_x".into(), get_wanted_x, 3u32, FnSpecCallArg::MappedArgument { param_idx: 0 }, FnSpecCallArg::from_hidden_state(seed3_idx))?;
 
     if let CompiledExpression::Bool { mut slab, jit_fn } = comp_ctx.compile_str("x == get_wanted_x(2)", &table)? {
         let test_value_idx = slab.get_binding_index(&"x".into()).unwrap();

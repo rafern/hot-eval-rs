@@ -10,9 +10,10 @@ pub enum SlabBindingInfo {
 }
 
 pub struct Slab {
-    data: Vec<MaybeUninit<usize>>,
+    data: Box<[MaybeUninit<usize>]>,
     hidden_state_count: usize,
     binding_map: HashMap<String, SlabBindingInfo>,
+    hidden_state_types: Box<[ValueType]>,
 }
 
 impl Slab {
@@ -34,10 +35,15 @@ impl Slab {
             }
         }
 
+        let mut hst = Vec::new();
+        for i in 0..hidden_state_count {
+            hst.push(*table.get_hidden_state(i).unwrap());
+        }
+
         let mut data = Vec::with_capacity(idx);
         data.resize(idx, MaybeUninit::new(0));
 
-        Ok(Slab { data, hidden_state_count, binding_map })
+        Ok(Slab { data: data.into(), hidden_state_count, binding_map, hidden_state_types: hst.into() })
     }
 
     pub fn get_binding_info(&self, name: &String) -> Option<&SlabBindingInfo> {
@@ -56,6 +62,14 @@ impl Slab {
 
     pub const fn get_hidden_state_count(&self) -> usize {
         self.hidden_state_count
+    }
+
+    pub fn get_hidden_state_type(&self, idx: usize) -> Option<ValueType> {
+        if idx < self.hidden_state_types.len() {
+            Some(self.hidden_state_types[idx])
+        } else {
+            None
+        }
     }
 
     pub fn get_address(&self, idx: usize) -> usize {

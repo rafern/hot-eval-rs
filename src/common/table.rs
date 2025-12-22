@@ -1,8 +1,40 @@
 use std::collections::{HashMap, hash_map::Iter};
 
-use crate::common::binding::BindingFunctionParameter;
+use super::{binding::{Binding, FnPointer, FnSpecCallArg, FnSpecChoice, ToBFPValueType}, error::CommonError, value::Value, value_type::ValueType};
 
-use super::{binding::{Binding, FnPointer, FnSpecChoice, ToBFPValueType}, error::CommonError, value::Value, value_type::ValueType};
+struct BindingFunctionParamBuilder {
+    mapping: HashMap<usize, ValueType>,
+}
+
+impl BindingFunctionParamBuilder {
+    pub fn new() -> Self {
+        Self { mapping: HashMap::new() }
+    }
+
+    pub fn maybe_add_spec_call_arg(&mut self, arg: &FnSpecCallArg, fn_ptr_arg_type: ValueType) -> Result<(), CommonError> {
+        if let FnSpecCallArg::MappedArgument { param_idx } = arg {
+            let idx = *param_idx;
+            if let Some(existing_type) = self.mapping.insert(idx, fn_ptr_arg_type) && fn_ptr_arg_type != existing_type {
+                return Err(CommonError::FuncSpecArgParamIndexConflict { idx, new_type: fn_ptr_arg_type, existing_type });
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn finish(self) -> Result<Box<[ValueType]>, CommonError> {
+        let mut params = Vec::new();
+        let len = self.mapping.len();
+        for i in 0..len {
+            match self.mapping.get(&i) {
+                Some(value_type) => params.push(*value_type),
+                None => return Err(CommonError::FuncSpecArgDiscontinuousParamMap { max_idx: len - 1, missing_idx: i }),
+            }
+        }
+
+        Ok(params.into())
+    }
+}
 
 pub struct Table<'table> {
     bindings: HashMap<String, Binding<'table>>,
@@ -81,8 +113,8 @@ impl<'table> Table<'table> {
         let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: Box::new([]),
-            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
+            params: [].into(),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr, args: [].into() })),
         }) }
     }
 
@@ -97,7 +129,9 @@ impl<'table> Table<'table> {
             params: [
                 P1::to_bfp_value_type().into(),
             ].into(),
-            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call {fn_ptr, args: [
+                FnSpecCallArg::MappedArgument { param_idx: 0 },
+            ].into() })),
         }) }
     }
 
@@ -105,15 +139,23 @@ impl<'table> Table<'table> {
     where
         R: ToBFPValueType,
         P1: ToBFPValueType,
-        M1: Into<BindingFunctionParameter>,
+        M1: Into<FnSpecCallArg>,
     {
         let fn_ptr = fn_ptr as FnPointer;
+        let mut params_builder = BindingFunctionParamBuilder::new();
+
+        let p1 = p1.into();
+        params_builder.maybe_add_spec_call_arg(&p1, P1::to_bfp_value_type().into())?;
+
+        let params = params_builder.finish()?;
+        p1.guard::<P1>(&params)?;
+
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: [
-                p1.into().guard::<P1>()?,
-            ].into(),
-            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
+            params,
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call {fn_ptr, args: [
+                p1,
+            ].into() })),
         }) }
     }
 
@@ -130,7 +172,10 @@ impl<'table> Table<'table> {
                 P1::to_bfp_value_type().into(),
                 P2::to_bfp_value_type().into(),
             ].into(),
-            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call {fn_ptr, args: [
+                FnSpecCallArg::MappedArgument { param_idx: 0 },
+                FnSpecCallArg::MappedArgument { param_idx: 1 },
+            ].into() })),
         }) }
     }
 
@@ -138,18 +183,29 @@ impl<'table> Table<'table> {
     where
         R: ToBFPValueType,
         P1: ToBFPValueType,
-        M1: Into<BindingFunctionParameter>,
+        M1: Into<FnSpecCallArg>,
         P2: ToBFPValueType,
-        M2: Into<BindingFunctionParameter>,
+        M2: Into<FnSpecCallArg>,
     {
         let fn_ptr = fn_ptr as FnPointer;
+        let mut params_builder = BindingFunctionParamBuilder::new();
+
+        let p1 = p1.into();
+        params_builder.maybe_add_spec_call_arg(&p1, P1::to_bfp_value_type().into())?;
+        let p2 = p2.into();
+        params_builder.maybe_add_spec_call_arg(&p2, P2::to_bfp_value_type().into())?;
+
+        let params = params_builder.finish()?;
+        p1.guard::<P1>(&params)?;
+        p2.guard::<P2>(&params)?;
+
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: [
-                p1.into().guard::<P1>()?,
-                p2.into().guard::<P2>()?,
-            ].into(),
-            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
+            params,
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call {fn_ptr, args: [
+                p1,
+                p2,
+            ].into() })),
         }) }
     }
 
@@ -168,7 +224,11 @@ impl<'table> Table<'table> {
                 P2::to_bfp_value_type().into(),
                 P3::to_bfp_value_type().into(),
             ].into(),
-            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call {fn_ptr, args: [
+                FnSpecCallArg::MappedArgument { param_idx: 0 },
+                FnSpecCallArg::MappedArgument { param_idx: 1 },
+                FnSpecCallArg::MappedArgument { param_idx: 2 },
+            ].into() })),
         }) }
     }
 
@@ -176,21 +236,35 @@ impl<'table> Table<'table> {
     where
         R: ToBFPValueType,
         P1: ToBFPValueType,
-        M1: Into<BindingFunctionParameter>,
+        M1: Into<FnSpecCallArg>,
         P2: ToBFPValueType,
-        M2: Into<BindingFunctionParameter>,
+        M2: Into<FnSpecCallArg>,
         P3: ToBFPValueType,
-        M3: Into<BindingFunctionParameter>,
+        M3: Into<FnSpecCallArg>,
     {
         let fn_ptr = fn_ptr as FnPointer;
+        let mut params_builder = BindingFunctionParamBuilder::new();
+
+        let p1 = p1.into();
+        params_builder.maybe_add_spec_call_arg(&p1, P1::to_bfp_value_type().into())?;
+        let p2 = p2.into();
+        params_builder.maybe_add_spec_call_arg(&p2, P2::to_bfp_value_type().into())?;
+        let p3 = p3.into();
+        params_builder.maybe_add_spec_call_arg(&p3, P3::to_bfp_value_type().into())?;
+
+        let params = params_builder.finish()?;
+        p1.guard::<P1>(&params)?;
+        p2.guard::<P2>(&params)?;
+        p3.guard::<P3>(&params)?;
+
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: [
-                p1.into().guard::<P1>()?,
-                p2.into().guard::<P2>()?,
-                p3.into().guard::<P3>()?,
-            ].into(),
-            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
+            params,
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call {fn_ptr, args: [
+                p1,
+                p2,
+                p3,
+            ].into() })),
         }) }
     }
 
@@ -211,7 +285,12 @@ impl<'table> Table<'table> {
                 P3::to_bfp_value_type().into(),
                 P4::to_bfp_value_type().into(),
             ].into(),
-            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call {fn_ptr, args: [
+                FnSpecCallArg::MappedArgument { param_idx: 0 },
+                FnSpecCallArg::MappedArgument { param_idx: 1 },
+                FnSpecCallArg::MappedArgument { param_idx: 2 },
+                FnSpecCallArg::MappedArgument { param_idx: 3 },
+            ].into() })),
         }) }
     }
 
@@ -219,24 +298,41 @@ impl<'table> Table<'table> {
     where
         R: ToBFPValueType,
         P1: ToBFPValueType,
-        M1: Into<BindingFunctionParameter>,
+        M1: Into<FnSpecCallArg>,
         P2: ToBFPValueType,
-        M2: Into<BindingFunctionParameter>,
+        M2: Into<FnSpecCallArg>,
         P3: ToBFPValueType,
-        M3: Into<BindingFunctionParameter>,
+        M3: Into<FnSpecCallArg>,
         P4: ToBFPValueType,
-        M4: Into<BindingFunctionParameter>,
+        M4: Into<FnSpecCallArg>,
     {
         let fn_ptr = fn_ptr as FnPointer;
+        let mut params_builder = BindingFunctionParamBuilder::new();
+
+        let p1 = p1.into();
+        params_builder.maybe_add_spec_call_arg(&p1, P1::to_bfp_value_type().into())?;
+        let p2 = p2.into();
+        params_builder.maybe_add_spec_call_arg(&p2, P2::to_bfp_value_type().into())?;
+        let p3 = p3.into();
+        params_builder.maybe_add_spec_call_arg(&p3, P3::to_bfp_value_type().into())?;
+        let p4 = p4.into();
+        params_builder.maybe_add_spec_call_arg(&p4, P4::to_bfp_value_type().into())?;
+
+        let params = params_builder.finish()?;
+        p1.guard::<P1>(&params)?;
+        p2.guard::<P2>(&params)?;
+        p3.guard::<P3>(&params)?;
+        p4.guard::<P4>(&params)?;
+
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: [
-                p1.into().guard::<P1>()?,
-                p2.into().guard::<P2>()?,
-                p3.into().guard::<P3>()?,
-                p4.into().guard::<P4>()?,
-            ].into(),
-            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
+            params,
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call {fn_ptr, args: [
+                p1,
+                p2,
+                p3,
+                p4,
+            ].into() })),
         }) }
     }
 
@@ -259,7 +355,13 @@ impl<'table> Table<'table> {
                 P4::to_bfp_value_type().into(),
                 P5::to_bfp_value_type().into(),
             ].into(),
-            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call {fn_ptr, args: [
+                FnSpecCallArg::MappedArgument { param_idx: 0 },
+                FnSpecCallArg::MappedArgument { param_idx: 1 },
+                FnSpecCallArg::MappedArgument { param_idx: 2 },
+                FnSpecCallArg::MappedArgument { param_idx: 3 },
+                FnSpecCallArg::MappedArgument { param_idx: 4 },
+            ].into() })),
         }) }
     }
 
@@ -267,27 +369,47 @@ impl<'table> Table<'table> {
     where
         R: ToBFPValueType,
         P1: ToBFPValueType,
-        M1: Into<BindingFunctionParameter>,
+        M1: Into<FnSpecCallArg>,
         P2: ToBFPValueType,
-        M2: Into<BindingFunctionParameter>,
+        M2: Into<FnSpecCallArg>,
         P3: ToBFPValueType,
-        M3: Into<BindingFunctionParameter>,
+        M3: Into<FnSpecCallArg>,
         P4: ToBFPValueType,
-        M4: Into<BindingFunctionParameter>,
+        M4: Into<FnSpecCallArg>,
         P5: ToBFPValueType,
-        M5: Into<BindingFunctionParameter>,
+        M5: Into<FnSpecCallArg>,
     {
         let fn_ptr = fn_ptr as FnPointer;
+        let mut params_builder = BindingFunctionParamBuilder::new();
+
+        let p1 = p1.into();
+        params_builder.maybe_add_spec_call_arg(&p1, P1::to_bfp_value_type().into())?;
+        let p2 = p2.into();
+        params_builder.maybe_add_spec_call_arg(&p2, P2::to_bfp_value_type().into())?;
+        let p3 = p3.into();
+        params_builder.maybe_add_spec_call_arg(&p3, P3::to_bfp_value_type().into())?;
+        let p4 = p4.into();
+        params_builder.maybe_add_spec_call_arg(&p4, P4::to_bfp_value_type().into())?;
+        let p5 = p5.into();
+        params_builder.maybe_add_spec_call_arg(&p5, P5::to_bfp_value_type().into())?;
+
+        let params = params_builder.finish()?;
+        p1.guard::<P1>(&params)?;
+        p2.guard::<P2>(&params)?;
+        p3.guard::<P3>(&params)?;
+        p4.guard::<P4>(&params)?;
+        p5.guard::<P5>(&params)?;
+
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
-            params: [
-                p1.into().guard::<P1>()?,
-                p2.into().guard::<P2>()?,
-                p3.into().guard::<P3>()?,
-                p4.into().guard::<P4>()?,
-                p5.into().guard::<P5>()?,
-            ].into(),
-            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
+            params,
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call {fn_ptr, args: [
+                p1,
+                p2,
+                p3,
+                p4,
+                p5,
+            ].into() })),
         }) }
     }
 }

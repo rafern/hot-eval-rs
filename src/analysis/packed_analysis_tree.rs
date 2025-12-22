@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use crate::{analysis::packed_analysis_node::{FunctionArgument, PackedAnalysisNodeData}, ast::ast_node::{BinaryOperator, Expression, UnaryOperator}, common::{binding::{Binding, BindingFunctionParameter}, table::Table, untyped_value::UntypedValue, value_type::ValueType}};
+use crate::{analysis::packed_analysis_node::{PackedAnalysisFunctionArg, PackedAnalysisNodeData}, ast::ast_node::{BinaryOperator, Expression, UnaryOperator}, common::{binding::Binding, table::Table, untyped_value::UntypedValue, value_type::ValueType}};
 
 use super::{error::AnalysisError, packed_analysis_node::PackedAnalysisNode};
 
@@ -34,13 +34,7 @@ impl<'table> PackedAnalysisTree<'table> {
                         return Err(AnalysisError::BadBindingKind { name: name.clone(), is_var: true })
                     },
                     Binding::Function { ret_type, params, fn_spec } => {
-                        let mut expected_argc = 0;
-                        for param in params {
-                            if let BindingFunctionParameter::Parameter { .. } = param {
-                                expected_argc += 1
-                            }
-                        }
-
+                        let expected_argc = params.len();
                         if expected_argc != actual_argc {
                             return Err(AnalysisError::BadArguments { name: name.clone(), expected_argc, actual_argc })
                         }
@@ -49,43 +43,23 @@ impl<'table> PackedAnalysisTree<'table> {
                     },
                 };
 
-                let mut aast_args = Vec::<FunctionArgument>::new();
-                let mut a = 0;
-
-                for param in params {
-                    aast_args.push(match param {
-                        BindingFunctionParameter::Parameter { value_type } => {
-                            let arg = &arguments[a];
-                            a += 1;
-                            let idx = self.ast_to_analysis_node(arg, table)?;
-                            FunctionArgument::Parameter { idx, expected_type: *value_type }
-                        },
-                        BindingFunctionParameter::ConstArgument { value } => {
-                            FunctionArgument::ConstArgument { value: value.clone() }
-                        },
-                        BindingFunctionParameter::HiddenStateArgument { hidden_state_idx, cast_to_type } => {
-                            let hidden_state_idx = *hidden_state_idx;
-                            let slab_value_type = table.get_hidden_state(hidden_state_idx);
-                            if let Some(slab_value_type) = slab_value_type {
-                                FunctionArgument::HiddenStateArgument { hidden_state_idx, slab_value_type: *slab_value_type, cast_to_type: *cast_to_type }
-                            } else {
-                                return Err(AnalysisError::UnknownHiddenState { idx: hidden_state_idx });
-                            }
-                        },
+                let mut args = Vec::<PackedAnalysisFunctionArg>::new();
+                for a in 0..params.len() {
+                    args.push(PackedAnalysisFunctionArg {
+                        idx: self.ast_to_analysis_node(&arguments[a], table)?,
+                        expected_type: params[a],
                     });
                 }
 
                 let this_idx = self.nodes.len();
 
-                for arg in &aast_args {
-                    if let FunctionArgument::Parameter { idx, expected_type: _ } = arg {
-                        self.nodes[*idx].parent_idx = Some(this_idx);
-                    }
+                for arg in &args {
+                    self.nodes[arg.idx].parent_idx = Some(this_idx);
                 }
 
                 (PackedAnalysisNode {
                     resolved_type: Some(*ret_type),
-                    data: PackedAnalysisNodeData::FunctionCall { args: aast_args, fn_spec },
+                    data: PackedAnalysisNodeData::FunctionCall { args: args.into(), fn_spec },
                     parent_idx: None,
                 }, this_idx)
             },
@@ -245,8 +219,8 @@ impl<'table> PackedAnalysisTree<'table> {
             PackedAnalysisNodeData::UntypedValue { .. } |
             PackedAnalysisNodeData::Variable { .. } => return Err(Box::new(AnalysisError::BadAnalysis)),
             PackedAnalysisNodeData::FunctionCall { args, fn_spec: _  } => 'slfc_match: {
-                for arg in args {
-                    if let FunctionArgument::Parameter { idx, expected_type } = arg && child_idx == *idx {
+                for PackedAnalysisFunctionArg { idx, expected_type } in args {
+                    if child_idx == *idx {
                         break 'slfc_match Some(*expected_type);
                     }
                 }
@@ -479,10 +453,8 @@ impl<'table> PackedAnalysisTree<'table> {
             PackedAnalysisNodeData::UntypedValue { .. } |
             PackedAnalysisNodeData::Variable { .. } => { },
             PackedAnalysisNodeData::FunctionCall { args, fn_spec: _ } => {
-                for arg in args {
-                    if let FunctionArgument::Parameter { idx, expected_type: _ } = arg {
-                        self.print_node_to_stderr(*idx, depth + 1);
-                    }
+                for PackedAnalysisFunctionArg { idx, expected_type: _ } in args {
+                    self.print_node_to_stderr(*idx, depth + 1);
                 }
             },
             PackedAnalysisNodeData::UnaryOperation { operator: _, right_idx } => {

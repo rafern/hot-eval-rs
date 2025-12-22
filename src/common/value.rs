@@ -1,6 +1,6 @@
 use super::value_type::ValueType;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Value {
     U8 { inner: u8 },
     U16 { inner: u16 },

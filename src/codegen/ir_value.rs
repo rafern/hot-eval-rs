@@ -2,7 +2,7 @@ use std::error::Error;
 
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate, builder::BuilderError, values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, IntValue, ValueKind}};
 
-use crate::{analysis::{error::AnalysisError, packed_analysis_node::{FunctionArgument, PackedAnalysisNodeData}, packed_analysis_tree::PackedAnalysisTree}, ast::ast_node::{BinaryOperator, UnaryOperator}, codegen::utils::get_fn_llvm_type, common::{binding::{FnSpecChoice, FnSpecHints}, ir_const::IRConst, slab::SlabBindingInfo, value::Value, value_type::ValueType}};
+use crate::{analysis::{error::AnalysisError, packed_analysis_node::{PackedAnalysisFunctionArg, PackedAnalysisNodeData}, packed_analysis_tree::PackedAnalysisTree}, ast::ast_node::{BinaryOperator, UnaryOperator}, codegen::utils::get_fn_llvm_type, common::{binding::{FnSpecCallArg, FnSpecChoice, FnSpecHints}, ir_const::IRConst, slab::SlabBindingInfo, value::Value, value_type::ValueType}};
 
 use super::{codegen_context::CodegenContext, error::CodegenError, ir_value_type::IRValueType, utils::get_usize_llvm_type};
 
@@ -195,41 +195,17 @@ impl<'ctx> IRValue<'ctx> {
             PackedAnalysisNodeData::TypedValue { value } => Self::from_ast_typed_value(value, context),
             PackedAnalysisNodeData::UntypedValue { .. } => return Err(Box::new(AnalysisError::BadAnalysis)),
             PackedAnalysisNodeData::FunctionCall { args, fn_spec } => {
-                let mut arg_types = Vec::<ValueType>::new();
-                let mut llvm_args = Vec::<BasicMetadataValueEnum<'ctx>>::new();
                 let mut spec_hint_consts = Vec::<Option<IRConst>>::new();
+                let mut call_arg_types = Vec::<ValueType>::new();
+                let mut call_arg_values = Vec::<Self>::new();
 
-                for arg in args {
-                    match arg {
-                        FunctionArgument::Parameter { idx: arg_idx, expected_type: arg_type } => {
-                            let arg_idx = *arg_idx;
-                            let arg_type = *arg_type;
-                            arg_types.push(arg_type);
-                            let llvm_val = Self::from_aast_node(aast, arg_idx, context)?.cast_if_needed(aast.get_node_type(arg_idx)?, arg_type, context)?;
-                            spec_hint_consts.push(llvm_val.get_ir_const());
-                            llvm_args.push(llvm_val.to_meta_value());
-                        },
-                        FunctionArgument::ConstArgument { value } => {
-                            arg_types.push(value.get_value_type());
-                            llvm_args.push(Self::from_ast_typed_value(value, context).to_meta_value());
-                        },
-                        FunctionArgument::HiddenStateArgument { hidden_state_idx, slab_value_type, cast_to_type } => {
-                            let hidden_state_idx = *hidden_state_idx;
-                            if hidden_state_idx >= context.slab.get_hidden_state_count() {
-                                return Err(Box::new(CodegenError::UnknownHiddenState { idx: hidden_state_idx }));
-                            }
-
-                            let mut ir_slab_value = IRValue::from_slab_value(hidden_state_idx, slab_value_type, context)?;
-                            if let Some(cast_to_type) = cast_to_type {
-                                ir_slab_value = ir_slab_value.cast_if_needed(*slab_value_type, *cast_to_type, context)?;
-                                arg_types.push(*cast_to_type);
-                            } else {
-                                arg_types.push(*slab_value_type);
-                            }
-
-                            llvm_args.push(ir_slab_value.to_meta_value());
-                        },
-                    }
+                for PackedAnalysisFunctionArg { idx: arg_idx, expected_type: arg_type } in args {
+                    let arg_idx = *arg_idx;
+                    let arg_type = *arg_type;
+                    let llvm_val = Self::from_aast_node(aast, arg_idx, context)?.cast_if_needed(aast.get_node_type(arg_idx)?, arg_type, context)?;
+                    spec_hint_consts.push(llvm_val.get_ir_const());
+                    call_arg_types.push(arg_type);
+                    call_arg_values.push(llvm_val);
                 }
 
                 let choice = match fn_spec(FnSpecHints { consts: spec_hint_consts.into() }) {
@@ -238,7 +214,39 @@ impl<'ctx> IRValue<'ctx> {
                 };
 
                 match choice {
-                    FnSpecChoice::Call { fn_ptr } => {
+                    FnSpecChoice::Call { fn_ptr, args } => {
+                        let mut arg_types = Vec::<ValueType>::new();
+                        let mut llvm_args = Vec::<BasicMetadataValueEnum<'ctx>>::new();
+
+                        for arg in args {
+                            match arg {
+                                FnSpecCallArg::MappedArgument { param_idx } => {
+                                    arg_types.push(call_arg_types[param_idx]);
+                                    llvm_args.push(call_arg_values[param_idx].to_meta_value());
+                                },
+                                FnSpecCallArg::ConstArgument { value } => {
+                                    arg_types.push(value.get_value_type());
+                                    llvm_args.push(Self::from_ast_typed_value(&value, context).to_meta_value());
+                                },
+                                FnSpecCallArg::HiddenStateArgument { hidden_state_idx, cast_to_type } => {
+                                    let slab_value_type = match context.slab.get_hidden_state_type(hidden_state_idx) {
+                                        Some(x) => x,
+                                        None => return Err(Box::new(CodegenError::UnknownHiddenState { idx: hidden_state_idx })),
+                                    };
+
+                                    let mut ir_slab_value = IRValue::from_slab_value(hidden_state_idx, &slab_value_type, context)?;
+                                    if let Some(cast_to_type) = cast_to_type {
+                                        ir_slab_value = ir_slab_value.cast_if_needed(slab_value_type, cast_to_type, context)?;
+                                        arg_types.push(cast_to_type);
+                                    } else {
+                                        arg_types.push(slab_value_type);
+                                    }
+
+                                    llvm_args.push(ir_slab_value.to_meta_value());
+                                },
+                            }
+                        }
+
                         let fn_type = get_fn_llvm_type(context.llvm_context, resolved_type, arg_types);
                         let ptr_type = context.llvm_context.ptr_type(AddressSpace::default());
                         let ptr_val = get_usize_llvm_type(context.llvm_context).const_int(fn_ptr.addr() as u64, false).const_to_pointer(ptr_type);
