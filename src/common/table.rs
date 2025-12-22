@@ -1,8 +1,8 @@
-use std::{collections::{HashMap, hash_map::Iter}, ffi::c_void};
+use std::collections::{HashMap, hash_map::Iter};
 
 use crate::common::binding::BindingFunctionParameter;
 
-use super::{binding::{Binding, ToBFPValueType}, error::CommonError, value::Value, value_type::ValueType};
+use super::{binding::{Binding, FnPointer, FnSpecChoice, ToBFPValueType}, error::CommonError, value::Value, value_type::ValueType};
 
 pub struct Table<'table> {
     bindings: HashMap<String, Binding<'table>>,
@@ -78,11 +78,11 @@ impl<'table> Table<'table> {
     where
         R: ToBFPValueType,
     {
-        let fn_ptr = fn_ptr as *const c_void;
+        let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
             params: Box::new([]),
-            fn_spec: Box::new(move |_| { fn_ptr }),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
         }) }
     }
 
@@ -91,13 +91,13 @@ impl<'table> Table<'table> {
         R: ToBFPValueType,
         P1: ToBFPValueType,
     {
-        let fn_ptr = fn_ptr as *const c_void;
+        let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
             params: [
                 P1::to_bfp_value_type().into(),
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr }),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
         }) }
     }
 
@@ -107,13 +107,13 @@ impl<'table> Table<'table> {
         P1: ToBFPValueType,
         M1: Into<BindingFunctionParameter>,
     {
-        let fn_ptr = fn_ptr as *const c_void;
+        let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
             params: [
                 p1.into().guard::<P1>()?,
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr }),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
         }) }
     }
 
@@ -123,14 +123,14 @@ impl<'table> Table<'table> {
         P1: ToBFPValueType,
         P2: ToBFPValueType,
     {
-        let fn_ptr = fn_ptr as *const c_void;
+        let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
             params: [
                 P1::to_bfp_value_type().into(),
                 P2::to_bfp_value_type().into(),
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr }),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
         }) }
     }
 
@@ -142,14 +142,14 @@ impl<'table> Table<'table> {
         P2: ToBFPValueType,
         M2: Into<BindingFunctionParameter>,
     {
-        let fn_ptr = fn_ptr as *const c_void;
+        let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
             params: [
                 p1.into().guard::<P1>()?,
                 p2.into().guard::<P2>()?,
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr }),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
         }) }
     }
 
@@ -160,7 +160,7 @@ impl<'table> Table<'table> {
         P2: ToBFPValueType,
         P3: ToBFPValueType,
     {
-        let fn_ptr = fn_ptr as *const c_void;
+        let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
             params: [
@@ -168,7 +168,7 @@ impl<'table> Table<'table> {
                 P2::to_bfp_value_type().into(),
                 P3::to_bfp_value_type().into(),
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr }),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
         }) }
     }
 
@@ -182,7 +182,7 @@ impl<'table> Table<'table> {
         P3: ToBFPValueType,
         M3: Into<BindingFunctionParameter>,
     {
-        let fn_ptr = fn_ptr as *const c_void;
+        let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
             params: [
@@ -190,7 +190,7 @@ impl<'table> Table<'table> {
                 p2.into().guard::<P2>()?,
                 p3.into().guard::<P3>()?,
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr }),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
         }) }
     }
 
@@ -202,7 +202,7 @@ impl<'table> Table<'table> {
         P3: ToBFPValueType,
         P4: ToBFPValueType,
     {
-        let fn_ptr = fn_ptr as *const c_void;
+        let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
             params: [
@@ -211,7 +211,7 @@ impl<'table> Table<'table> {
                 P3::to_bfp_value_type().into(),
                 P4::to_bfp_value_type().into(),
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr }),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
         }) }
     }
 
@@ -227,7 +227,7 @@ impl<'table> Table<'table> {
         P4: ToBFPValueType,
         M4: Into<BindingFunctionParameter>,
     {
-        let fn_ptr = fn_ptr as *const c_void;
+        let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
             params: [
@@ -236,7 +236,7 @@ impl<'table> Table<'table> {
                 p3.into().guard::<P3>()?,
                 p4.into().guard::<P4>()?,
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr }),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
         }) }
     }
 
@@ -249,7 +249,7 @@ impl<'table> Table<'table> {
         P4: ToBFPValueType,
         P5: ToBFPValueType,
     {
-        let fn_ptr = fn_ptr as *const c_void;
+        let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
             params: [
@@ -259,7 +259,7 @@ impl<'table> Table<'table> {
                 P4::to_bfp_value_type().into(),
                 P5::to_bfp_value_type().into(),
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr }),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
         }) }
     }
 
@@ -277,7 +277,7 @@ impl<'table> Table<'table> {
         P5: ToBFPValueType,
         M5: Into<BindingFunctionParameter>,
     {
-        let fn_ptr = fn_ptr as *const c_void;
+        let fn_ptr = fn_ptr as FnPointer;
         unsafe { self.add_binding(name, Binding::Function {
             ret_type: R::to_bfp_value_type(),
             params: [
@@ -287,7 +287,7 @@ impl<'table> Table<'table> {
                 p4.into().guard::<P4>()?,
                 p5.into().guard::<P5>()?,
             ].into(),
-            fn_spec: Box::new(move |_| { fn_ptr }),
+            fn_spec: Box::new(move |_| Ok(FnSpecChoice::Call { fn_ptr })),
         }) }
     }
 }

@@ -2,7 +2,7 @@ use std::error::Error;
 
 use inkwell::{AddressSpace, FloatPredicate, IntPredicate, builder::BuilderError, values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, IntValue, ValueKind}};
 
-use crate::{analysis::{error::AnalysisError, packed_analysis_node::{FunctionArgument, PackedAnalysisNodeData}, packed_analysis_tree::PackedAnalysisTree}, ast::ast_node::{BinaryOperator, UnaryOperator}, codegen::utils::get_fn_llvm_type, common::{binding::BindingFunctionSpecializationHints, ir_const::IRConst, slab::SlabBindingInfo, value::Value, value_type::ValueType}};
+use crate::{analysis::{error::AnalysisError, packed_analysis_node::{FunctionArgument, PackedAnalysisNodeData}, packed_analysis_tree::PackedAnalysisTree}, ast::ast_node::{BinaryOperator, UnaryOperator}, codegen::utils::get_fn_llvm_type, common::{binding::{FnSpecChoice, FnSpecHints}, ir_const::IRConst, slab::SlabBindingInfo, value::Value, value_type::ValueType}};
 
 use super::{codegen_context::CodegenContext, error::CodegenError, ir_value_type::IRValueType, utils::get_usize_llvm_type};
 
@@ -232,21 +232,37 @@ impl<'ctx> IRValue<'ctx> {
                     }
                 }
 
-                let fn_ptr = fn_spec(BindingFunctionSpecializationHints { consts: spec_hint_consts.into() });
-                let fn_type = get_fn_llvm_type(context.llvm_context, resolved_type, arg_types);
-                let ptr_type = context.llvm_context.ptr_type(AddressSpace::default());
-                let ptr_val = get_usize_llvm_type(context.llvm_context).const_int(fn_ptr.addr() as u64, false).const_to_pointer(ptr_type);
-                let ret_val = context.builder.build_indirect_call(fn_type, ptr_val, llvm_args.as_slice(), "")?;
+                let choice = match fn_spec(FnSpecHints { consts: spec_hint_consts.into() }) {
+                    Ok(x) => x,
+                    Err(msg) => return Err(CodegenError::SpecFailed { msg }.into()),
+                };
 
-                match ret_val.try_as_basic_value() {
-                    ValueKind::Basic(basic_value_enum) => {
-                        match basic_value_enum {
-                            BasicValueEnum::IntValue(inner) => IRValue::from_int_value(inner, resolved_type)?,
-                            BasicValueEnum::FloatValue(inner) => IRValue::from_float_value(inner, resolved_type)?,
-                            _ => return Err(Box::new(CodegenError::UnexpectedBasicValueEnum)),
+                match choice {
+                    FnSpecChoice::Call { fn_ptr } => {
+                        let fn_type = get_fn_llvm_type(context.llvm_context, resolved_type, arg_types);
+                        let ptr_type = context.llvm_context.ptr_type(AddressSpace::default());
+                        let ptr_val = get_usize_llvm_type(context.llvm_context).const_int(fn_ptr.addr() as u64, false).const_to_pointer(ptr_type);
+                        let ret_val = context.builder.build_indirect_call(fn_type, ptr_val, llvm_args.as_slice(), "")?;
+
+                        match ret_val.try_as_basic_value() {
+                            ValueKind::Basic(basic_value_enum) => {
+                                match basic_value_enum {
+                                    BasicValueEnum::IntValue(inner) => IRValue::from_int_value(inner, resolved_type)?,
+                                    BasicValueEnum::FloatValue(inner) => IRValue::from_float_value(inner, resolved_type)?,
+                                    _ => return Err(Box::new(CodegenError::UnexpectedBasicValueEnum)),
+                                }
+                            },
+                            ValueKind::Instruction(..) => return Err(Box::new(CodegenError::UnexpectedFunctionReturnValue)),
                         }
                     },
-                    ValueKind::Instruction(..) => return Err(Box::new(CodegenError::UnexpectedFunctionReturnValue)),
+                    FnSpecChoice::Const { value } => {
+                        let actual_type = value.get_value_type();
+                        if actual_type != resolved_type {
+                            return Err(CodegenError::BadSpecConst { actual_type, expected_type: resolved_type }.into());
+                        }
+
+                        IRValue::from_ast_typed_value(&value, context)
+                    },
                 }
             },
             PackedAnalysisNodeData::UnaryOperation { operator, right_idx } => {

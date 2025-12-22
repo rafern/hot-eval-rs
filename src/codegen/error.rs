@@ -11,6 +11,8 @@ pub enum CodegenError {
     BadBindingType { name: String, actual_type: ValueType, expected_type: ValueType },
     BadBindingKind { name: String, is_var: bool },
     UnknownHiddenState { idx: usize },
+    SpecFailed { msg: String },
+    BadSpecConst { actual_type: ValueType, expected_type: ValueType },
 }
 
 impl fmt::Display for CodegenError {
@@ -29,6 +31,8 @@ impl fmt::Display for CodegenError {
                 }
             },
             Self::UnknownHiddenState { idx } => write!(f, "Unknown hidden state {idx}"),
+            Self::SpecFailed { msg } => write!(f, "Function specialization failed: {msg}"),
+            Self::BadSpecConst { actual_type, expected_type } => write!(f, "Const specialization has an unexpected type; expected {expected_type:?}, got {actual_type:?}"),
         }
     }
 }

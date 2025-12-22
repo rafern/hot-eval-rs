@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Formatter};
 
-use crate::{ast::ast_node::{BinaryOperator, UnaryOperator}, common::{binding::BindingFunctionSpecialization, untyped_value::UntypedValue, value::Value, value_type::ValueType}};
+use crate::{ast::ast_node::{BinaryOperator, UnaryOperator}, common::{binding::FnSpec, untyped_value::UntypedValue, value::Value, value_type::ValueType}};
 
 #[derive(Debug)]
 pub enum FunctionArgument {
@@ -12,7 +12,7 @@ pub enum FunctionArgument {
 pub enum PackedAnalysisNodeData<'table> {
     TypedValue { value: Value },
     UntypedValue { value: UntypedValue },
-    FunctionCall { args: Vec<FunctionArgument>, fn_spec: &'table BindingFunctionSpecialization<'table> },
+    FunctionCall { args: Vec<FunctionArgument>, fn_spec: &'table FnSpec<'table> },
     UnaryOperation { operator: UnaryOperator, right_idx: usize },
     BinaryOperation { operator: BinaryOperator, left_idx: usize, right_idx: usize },
     Variable { name: String },
